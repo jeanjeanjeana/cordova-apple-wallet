@@ -112,6 +112,65 @@ typedef void (^completedPaymentProcessHandler)(PKAddPaymentPassRequest *request)
     [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
 }
 
+// Plugin Method - check Card Activation
+- (void) checkActivation:(CDVInvokedUrlCommand*)command {
+
+    NSMutableArray *requiresActivationsCardsList = [NSMutableArray array];
+    
+    PKPassLibrary *passLibrary = [[PKPassLibrary alloc] init];
+    NSArray *paymentPasses = [[NSArray alloc] init];
+    if (@available(iOS 13.5, *)) { // PKPassTypePayment is deprecated in iOS13.5
+      paymentPasses = [passLibrary passesOfType: PKPassTypeSecureElement];
+      for (PKPass *pass in paymentPasses) {
+        PKSecureElementPass *paymentPass = [pass secureElementPass];
+        if ([paymentPass passActivationState] == PKSecureElementPassActivationStateRequiresActivation) { //requiresActivations
+            [requiresActivationsCardsList addObject:[paymentPass primaryAccountNumberSuffix]];
+        }
+      }
+    } else {
+      paymentPasses = [passLibrary passesOfType: PKPassTypePayment];
+      for (PKPass *pass in paymentPasses) {
+        PKPaymentPass *paymentPass = [pass paymentPass];
+        if([paymentPass passActivationState] == PKSecureElementPassActivationStateRequiresActivation) {
+            [requiresActivationsCardsList addObject:[paymentPass primaryAccountNumberSuffix]];
+        }
+      }
+    }
+    
+    if (WCSession.isSupported) { // check if the device support to handle an Apple Watch
+        WCSession *session = [WCSession defaultSession];
+        [session setDelegate:self.appDelegate];
+        [session activateSession];
+        
+        if ([session isPaired]) { // Check if the iPhone is paired with the Apple Watch
+
+          if (@available(iOS 13.5, *)) {
+                paymentPasses = [passLibrary remoteSecureElementPasses]; // remotePaymentPasses is deprecated in iOS13.5
+                for (PKSecureElementPass *pass in paymentPasses) {
+                    if ([pass passActivationState] == PKSecureElementPassActivationStateRequiresActivation) { //requiresActivations
+                        [requiresActivationsCardsList addObject:[pass primaryAccountNumberSuffix]];
+                    }
+                }
+            } else {
+                paymentPasses = [passLibrary remotePaymentPasses];
+                for (PKPass *pass in paymentPasses) {
+                    PKPaymentPass * paymentPass = [pass paymentPass];
+                    if([paymentPass passActivationState] == PKSecureElementPassActivationStateRequiresActivation) {
+                        [requiresActivationsCardsList addObject:[paymentPass primaryAccountNumberSuffix]];
+                    }
+                }
+            }
+          
+        }
+    }
+
+    NSArray *arrayOfRequiresActivationsCardsList = [NSArray arrayWithArray:requiresActivationsCardsList];
+    
+    CDVPluginResult *pluginResult;
+    pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsArray:arrayOfRequiresActivationsCardsList];
+    [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+}
+
 // Plugin Method - check Card Eligibility By Suffix
 - (void) checkCardEligibilityBySuffix:(CDVInvokedUrlCommand*)command {
     NSString * cardSuffix = [command.arguments objectAtIndex:0];
